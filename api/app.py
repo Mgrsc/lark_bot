@@ -169,3 +169,8 @@ def process_message_in_background(message: dict, text_content: str, event_id: st
         end_time = time.time()
         duration = end_time - start_time
         logger.info(f"Finished background processing in {duration:.2f} seconds.", extra=log_context)
+
+@app.route('/', methods=['GET'])
+def health_check():
+    """A simple health check endpoint."""
+    return jsonify({"status": "ok", "message": "Lark bot is running."}), 200
