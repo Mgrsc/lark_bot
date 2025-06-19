@@ -1,0 +1,38 @@
+services:
+  # The main application service
+  app:
+    # Build the Docker image from the Dockerfile in the current directory
+    build: .
+    container_name: lark-bot-app
+    ports:
+      # Map port 5001 on the host to port 8000 in the container
+      - "5001:8000"
+    env_file:
+      # Load environment variables from the .env file for secrets
+      - .env
+    environment:
+      # Override REDIS_URL to connect to the Valkey service within the Docker network.
+      # This ensures the app uses the containerized database.
+      - REDIS_URL=redis://valkey:6379/0
+    depends_on:
+      # Ensure the Valkey service is started before the app service
+      - valkey
+
+  # The Valkey (Redis-compatible) database service
+  valkey:
+    # Use the official, lightweight Valkey image
+    image: valkey/valkey:alpine
+    container_name: lark-bot-valkey
+    ports:
+      # Expose Valkey to the host machine for direct access/debugging if needed
+      - "6379:6379"
+    volumes:
+      # Use a named volume to persist Valkey data across container restarts
+      - valkey-data:/data
+    environment:
+      # Use the official environment variable to pass extra flags for persistence.
+      - VALKEY_EXTRA_FLAGS=--save 60 1 --loglevel notice
+
+# Define the named volume for data persistence
+volumes:
+  valkey-data:
