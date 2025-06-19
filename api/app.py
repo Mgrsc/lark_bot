@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import threading
+import time
 from flask import Flask, request, jsonify
 from api import config
 from api.services import lark_service, openai_service, redis_service
@@ -42,15 +43,18 @@ redis_service.init_redis()
 @app.route('/api/lark_callback', methods=['POST'])
 def lark_callback():
     data = request.json
+    header = data.get("header", {})
+    event_id = header.get("event_id")
+    log_context = {"event_id": event_id}
+
     if config.DEBUG_MODE:
-        logger.debug("Received Lark callback request: %s", json.dumps(data, indent=2, ensure_ascii=False))
+        logger.debug("Received Lark callback request: %s", json.dumps(data, indent=2, ensure_ascii=False), extra=log_context)
 
     if "challenge" in data:
         return jsonify({"challenge": data["challenge"]})
 
-    header = data.get("header", {})
     if header.get("token") != config.LARK_VERIFICATION_TOKEN:
-        logger.warning("Invalid verification token received.")
+        logger.warning("Invalid verification token received.", extra=log_context)
         return jsonify({"msg": "Invalid token"}), 401
 
     event = data.get("event", {})
@@ -63,12 +67,22 @@ def lark_callback():
     msg_id = message.get("message_id")
     chat_id = message.get("chat_id")
     
-    log_context = {"chat_id": chat_id, "msg_id": msg_id}
+    log_context.update({"chat_id": chat_id, "msg_id": msg_id})
 
     if not msg_id or redis_service.is_message_processed(msg_id):
         logger.info("Duplicate message ignored.", extra=log_context)
         return jsonify({"msg": "Duplicate message ignored"})
     redis_service.mark_message_as_processed(msg_id)
+
+    # Ignore messages that are too old (e.g., older than 5 minutes)
+    create_time_ms = message.get("create_time")
+    if create_time_ms:
+        create_time_s = int(create_time_ms) / 1000
+        current_time_s = time.time()
+        age_seconds = current_time_s - create_time_s
+        if age_seconds > config.MAX_MESSAGE_AGE_SECONDS:
+            logger.warning(f"Ignoring stale message (age: {age_seconds:.0f}s).", extra=log_context)
+            return jsonify({"msg": "Stale message ignored"})
 
     text_content = json.loads(message.get("content", "{}")).get("text", "").strip()
     if text_content.startswith('/'):
@@ -81,15 +95,18 @@ def lark_callback():
         logger.info("Empty message content received.", extra=log_context)
         return jsonify({"msg": "Empty message content"})
 
-    thread = threading.Thread(target=process_message_in_background, args=(message, text_content))
+    thread = threading.Thread(target=process_message_in_background, args=(message, text_content, event_id))
     thread.start()
 
     return jsonify({"msg": "ok"})
 
-def process_message_in_background(message: dict, text_content: str):
+def process_message_in_background(message: dict, text_content: str, event_id: str):
+    start_time = time.time()
     chat_id = message.get("chat_id")
     msg_id = message.get("message_id")
-    log_context = {"chat_id": chat_id, "msg_id": msg_id}
+    log_context = {"chat_id": chat_id, "msg_id": msg_id, "event_id": event_id}
+
+    logger.info("Starting background processing for message.", extra=log_context)
 
     # For group chats, respond only when mentioned. For P2P chats, respond to any message.
     chat_type = message.get("chat_type")
@@ -148,3 +165,7 @@ def process_message_in_background(message: dict, text_content: str):
             lark_service.patch_message(placeholder_id, error_msg)
         else:
             lark_service.send_message(chat_id, error_msg)
+    finally:
+        end_time = time.time()
+        duration = end_time - start_time
+        logger.info(f"Finished background processing in {duration:.2f} seconds.", extra=log_context)

@@ -28,6 +28,7 @@ DEFAULT_ROLE = os.getenv("DEFAULT_ROLE", "default")
 PLACEHOLDER_MESSAGE = os.getenv("PLACEHOLDER_MESSAGE", "Thinking, please wait...")
 
 CHAT_CONTEXT_MAX_MESSAGES = int(os.getenv("CHAT_CONTEXT_MAX_MESSAGES", 20))
+MAX_MESSAGE_AGE_SECONDS = int(os.getenv("MAX_MESSAGE_AGE_SECONDS", 300))
 
 PROMPTS_DIR = os.path.join(PROJECT_ROOT, 'prompts')
 PROMPTS: dict = {}

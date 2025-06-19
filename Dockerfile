@@ -18,7 +18,7 @@ ENV PYTHONUNBUFFERED=1 \
 # This leverages Docker's build cache for faster builds.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv && \
-    uv sync --frozen --no-dev
+    uv sync --no-dev
 
 # Install tini, a lightweight init system for containers, to handle signals properly
 RUN apt-get update && \
@@ -32,4 +32,4 @@ EXPOSE 8000
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Command to run the application using Gunicorn, a production-ready WSGI server
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8000", "api.app:app"]
+CMD ["gunicorn", "--workers", "4", "--worker-class", "gevent", "--bind", "0.0.0.0:8000", "api.app:app"]
