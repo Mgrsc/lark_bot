@@ -2,7 +2,6 @@ import os
 import json
 import logging
 import re
-import threading
 import time
 from flask import Flask, request, jsonify
 from api import config
@@ -95,18 +94,9 @@ def lark_callback():
         logger.info("Empty message content received.", extra=log_context)
         return jsonify({"msg": "Empty message content"})
 
-    thread = threading.Thread(target=process_message_in_background, args=(message, text_content, event_id))
-    thread.start()
-
-    return jsonify({"msg": "ok"})
-
-def process_message_in_background(message: dict, text_content: str, event_id: str):
+    # --- Start of Synchronous Processing for Vercel ---
     start_time = time.time()
-    chat_id = message.get("chat_id")
-    msg_id = message.get("message_id")
-    log_context = {"chat_id": chat_id, "msg_id": msg_id, "event_id": event_id}
-
-    logger.info("Starting background processing for message.", extra=log_context)
+    logger.info("Starting synchronous processing for Vercel.", extra=log_context)
 
     # For group chats, respond only when mentioned. For P2P chats, respond to any message.
     chat_type = message.get("chat_type")
@@ -115,15 +105,10 @@ def process_message_in_background(message: dict, text_content: str, event_id: st
         is_mentioned = any(mention.get("id") == config.LARK_APP_ID for mention in mentions)
         if not is_mentioned:
             logger.info("Bot not mentioned in group chat, ignoring message.", extra=log_context)
-            return
+            return jsonify({"msg": "Bot not mentioned"})
 
-    placeholder_id = None
-    if config.ENABLE_SEND_AND_REPLACE:
-        placeholder_id = lark_service.send_message(chat_id, config.PLACEHOLDER_MESSAGE)
-        if not placeholder_id:
-            logger.error("Failed to send placeholder message.", extra=log_context)
-            lark_service.send_message(chat_id, "Oops, failed to send the initial message.")
-            return
+    # Placeholder message logic is disabled for sync mode as it adds complexity.
+    # The response will be sent once fully generated.
 
     try:
         settings = redis_service.get_chat_settings(chat_id)
@@ -148,27 +133,24 @@ def process_message_in_background(message: dict, text_content: str, event_id: st
 
         ai_response = ai_response.strip()
         
-        if placeholder_id:
-            lark_service.patch_message(placeholder_id, ai_response)
-        else:
-            lark_service.send_message(chat_id, ai_response)
+        lark_service.send_message(chat_id, ai_response)
 
         history.append({"role": "user", "content": text_content})
         history.append({"role": "assistant", "content": ai_response})
         redis_service.save_chat_context(chat_id, history)
         logger.info("Successfully processed message and sent response.", extra=log_context)
 
+        return jsonify({"msg": "Successfully processed"})
+
     except Exception as e:
         error_msg = f"🤯 Oops, an error occurred: `{type(e).__name__}`"
         logger.exception("An error occurred while processing the message:", extra=log_context)
-        if placeholder_id:
-            lark_service.patch_message(placeholder_id, error_msg)
-        else:
-            lark_service.send_message(chat_id, error_msg)
+        lark_service.send_message(chat_id, error_msg)
+        return jsonify({"msg": "Error occurred"}), 500
     finally:
         end_time = time.time()
         duration = end_time - start_time
-        logger.info(f"Finished background processing in {duration:.2f} seconds.", extra=log_context)
+        logger.info(f"Finished synchronous processing in {duration:.2f} seconds.", extra=log_context)
 
 @app.route('/', methods=['GET'])
 def health_check():
