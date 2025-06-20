@@ -95,3 +95,21 @@ def get_bot_open_id() -> Optional[str]:
     except Exception as e:
         logging.error(f"Exception while getting bot info: {e}")
     return None
+
+def resolve_mentions(text_content: str, mentions: list) -> str:
+    """Replaces mention placeholders in text with actual user names."""
+    if not mentions:
+        return text_content
+    
+    for mention in mentions:
+        try:
+            user_name = mention.get("name", "")
+            mention_key = mention.get("key", "")
+            if user_name and mention_key:
+                # The key in the 'mentions' array corresponds to the placeholder in the text.
+                # e.g., key: "@_user_1" -> text: "... @_user_1 ..."
+                text_content = text_content.replace(mention_key, f"@{user_name}")
+        except Exception as e:
+            logging.error(f"Error processing a mention: {mention}. Error: {e}")
+            
+    return text_content

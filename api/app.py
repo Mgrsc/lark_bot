@@ -86,6 +86,9 @@ def lark_callback():
             return jsonify({"msg": "Stale message ignored"})
 
     text_content = json.loads(message.get("content", "{}")).get("text", "").strip()
+    mentions = message.get("mentions", [])
+    text_content = lark_service.resolve_mentions(text_content, mentions)
+    
     if text_content.startswith('/'):
         parts = text_content.split()
         logger.info("Handling command '%s' for chat.", parts[0], extra=log_context)
