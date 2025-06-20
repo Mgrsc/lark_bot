@@ -49,12 +49,11 @@ def send_message(chat_id: str, content: str) -> Optional[str]:
         logging.error(f"Exception sending Lark message: {e}")
     return None
 
-def patch_message(message_id: str, content: str):
+def patch_message(message_id: str, content: str) -> bool:
     access_token = get_lark_access_token()
-    if not access_token: return
+    if not access_token: return False
     
     url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}"
-    # Correctly format the content for patching a 'lark_md' message
     payload = {
         "content": json.dumps({
             "config": {"wide_screen_mode": True},
@@ -65,10 +64,14 @@ def patch_message(message_id: str, content: str):
     
     try:
         response = requests.patch(url, headers=headers, json=payload, timeout=5)
-        if response.json().get("code") != 0:
-            logging.error(f"Failed to patch Lark message {message_id}: {response.text}")
+        data = response.json()
+        if data.get("code") == 0:
+            logging.info(f"Successfully patched message {message_id}.")
+            return True
+        logging.error(f"Failed to patch Lark message {message_id}: {response.text}")
     except Exception as e:
         logging.error(f"Exception patching Lark message {message_id}: {e}")
+    return False
 
 def get_bot_open_id() -> Optional[str]:
     """Fetches the bot's own open_id from the Lark API."""

@@ -124,8 +124,11 @@ def lark_callback():
             logger.info("Bot not mentioned in group chat, ignoring message.", extra=log_context)
             return jsonify({"msg": "Bot not mentioned"})
 
-    # Placeholder message logic is disabled for sync mode as it adds complexity.
-    # The response will be sent once fully generated.
+    placeholder_id = None
+    if config.ENABLE_SEND_AND_REPLACE:
+        placeholder_id = lark_service.send_message(chat_id, config.PLACEHOLDER_MESSAGE)
+        if not placeholder_id:
+            logger.warning("Failed to send placeholder message.", extra=log_context)
 
     try:
         settings = redis_service.get_chat_settings(chat_id)
@@ -139,7 +142,6 @@ def lark_callback():
         logger.info("Requesting AI response for chat.", extra=log_context)
         ai_response = openai_service.get_ai_response(messages, model)
 
-        # Remove <think> blocks used for chain-of-thought reasoning.
         # 1. Remove <think> blocks used for chain-of-thought reasoning.
         ai_response = re.sub(r'<think>.*?</think>', '', ai_response, flags=re.DOTALL)
         # 2. Remove any placeholder <at> tags that are not valid for Lark cards.
@@ -151,7 +153,10 @@ def lark_callback():
             logger.info("AI response is empty, sending a default message.", extra=log_context)
             ai_response = "I'm not sure how to respond to that."
         
-        lark_service.send_message(chat_id, ai_response)
+        if placeholder_id:
+            lark_service.patch_message(placeholder_id, ai_response)
+        else:
+            lark_service.send_message(chat_id, ai_response)
 
         history.append({"role": "user", "content": text_content})
         history.append({"role": "assistant", "content": ai_response})
