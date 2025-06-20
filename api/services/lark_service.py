@@ -27,9 +27,16 @@ def send_message(chat_id: str, content: str) -> Optional[str]:
     access_token = get_lark_access_token()
     if not access_token: return None
     
-    card = {"config": {"wide_screen_mode": True}, "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": content}}]}
     url = f"https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id"
-    payload = {"receive_id": chat_id, "msg_type": "interactive", "content": json.dumps(card)}
+    # Correctly format the content for an interactive message card
+    payload = {
+        "receive_id": chat_id,
+        "msg_type": "interactive",
+        "content": json.dumps({
+            "config": {"wide_screen_mode": True},
+            "elements": [{"tag": "markdown", "content": content}]
+        })
+    }
     headers = {"Authorization": f"Bearer {access_token}"}
     
     try:
@@ -46,9 +53,14 @@ def patch_message(message_id: str, content: str):
     access_token = get_lark_access_token()
     if not access_token: return
     
-    card = {"config": {"wide_screen_mode": True}, "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": content}}]}
     url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}"
-    payload = {"content": json.dumps(card)}
+    # Correctly format the content for patching a 'lark_md' message
+    payload = {
+        "content": json.dumps({
+            "config": {"wide_screen_mode": True},
+            "elements": [{"tag": "markdown", "content": content}]
+        })
+    }
     headers = {"Authorization": f"Bearer {access_token}"}
     
     try:

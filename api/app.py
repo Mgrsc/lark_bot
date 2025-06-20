@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import re
+import sys
 import time
 from flask import Flask, request, jsonify
 from api import config
@@ -13,7 +14,8 @@ app = Flask(__name__)
 log_level = logging.DEBUG if config.DEBUG_MODE else logging.INFO
 logging.basicConfig(level=log_level,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 if config.DEBUG_MODE:
