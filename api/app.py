@@ -103,8 +103,20 @@ def lark_callback():
     # For group chats, respond only when mentioned. For P2P chats, respond to any message.
     chat_type = message.get("chat_type")
     if chat_type == "group":
+        # Lazy-load the bot's Open ID if it hasn't been fetched yet.
+        # This is thread-safe and avoids race conditions in multi-worker setups.
+        if config.LARK_BOT_OPEN_ID is None:
+            bot_id = lark_service.get_bot_open_id()
+            if bot_id:
+                config.LARK_BOT_OPEN_ID = bot_id
+                logger.info(f"Lazily fetched and set bot Open ID: {bot_id}")
+            else:
+                logger.error("Failed to fetch bot Open ID. Mention feature will not work.")
+                # We can't proceed with the mention check, so we have to ignore.
+                return jsonify({"msg": "Could not verify bot mention."})
+
         mentions = message.get("mentions", [])
-        is_mentioned = any(mention.get("id") == config.LARK_APP_ID for mention in mentions)
+        is_mentioned = any(mention.get("id", {}).get("open_id") == config.LARK_BOT_OPEN_ID for mention in mentions)
         if not is_mentioned:
             logger.info("Bot not mentioned in group chat, ignoring message.", extra=log_context)
             return jsonify({"msg": "Bot not mentioned"})
@@ -125,15 +137,16 @@ def lark_callback():
         ai_response = openai_service.get_ai_response(messages, model)
 
         # Remove <think> blocks used for chain-of-thought reasoning.
+        # 1. Remove <think> blocks used for chain-of-thought reasoning.
         ai_response = re.sub(r'<think>.*?</think>', '', ai_response, flags=re.DOTALL)
-
-        # Extract the final answer from the AI's full response, which may include a "chain of thought".
-        # The final answer is assumed to start from the last H1 markdown header.
-        last_header_pos = ai_response.rfind('\n# ')
-        if last_header_pos != -1:
-            ai_response = ai_response[last_header_pos:]
-
+        # 2. Remove any placeholder <at> tags that are not valid for Lark cards.
+        ai_response = re.sub(r'<at.*?</at>', '', ai_response)
+        # 3. The entire remaining response is considered the answer.
         ai_response = ai_response.strip()
+        
+        if not ai_response:
+            logger.info("AI response is empty, sending a default message.", extra=log_context)
+            ai_response = "I'm not sure how to respond to that."
         
         lark_service.send_message(chat_id, ai_response)
 

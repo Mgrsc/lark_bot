@@ -69,3 +69,29 @@ def patch_message(message_id: str, content: str):
             logging.error(f"Failed to patch Lark message {message_id}: {response.text}")
     except Exception as e:
         logging.error(f"Exception patching Lark message {message_id}: {e}")
+
+def get_bot_open_id() -> Optional[str]:
+    """Fetches the bot's own open_id from the Lark API."""
+    access_token = get_lark_access_token()
+    if not access_token:
+        logging.error("Cannot get bot open_id without an access token.")
+        return None
+    
+    url = "https://open.feishu.cn/open-apis/bot/v3/info"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("code") == 0:
+            open_id = data.get("bot", {}).get("open_id")
+            if open_id:
+                logging.info(f"Successfully parsed bot open_id: {open_id}")
+                return open_id
+            logging.error(f"Could not find open_id in bot info response: {data}")
+        else:
+            logging.error(f"Failed to get bot info from Lark: {data}")
+    except Exception as e:
+        logging.error(f"Exception while getting bot info: {e}")
+    return None

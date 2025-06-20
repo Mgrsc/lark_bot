@@ -1,14 +1,15 @@
 import os
+from typing import Optional
 from dotenv import load_dotenv
 
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+load_dotenv()
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 LARK_APP_ID = os.getenv("LARK_APP_ID")
 LARK_APP_SECRET = os.getenv("LARK_APP_SECRET")
 LARK_VERIFICATION_TOKEN = os.getenv("LARK_VERIFICATION_TOKEN")
+LARK_BOT_OPEN_ID: Optional[str] = None
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
