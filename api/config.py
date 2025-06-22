@@ -14,7 +14,7 @@ LARK_BOT_OPEN_ID: Optional[str] = None
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
-OPENAI_API_TIMEOUT = int(os.getenv("OPENAI_API_TIMEOUT", 60))
+OPENAI_API_TIMEOUT = int(os.getenv("OPENAI_API_TIMEOUT", 180))
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.7))
 OPENAI_TOP_P = float(os.getenv("OPENAI_TOP_P", 1.0))
 OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", 4096))
@@ -36,5 +36,18 @@ PROMPTS: dict = {}
 
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == 'true'
 
-MCP_STREAM_HTTP_URLS = [url.strip() for url in os.getenv("MCP_STREAM_HTTP_URLS", "").split(',') if url.strip()]
 MCP_CONNECT_TIMEOUT = int(os.getenv("MCP_CONNECT_TIMEOUT", 10))
+
+def _parse_mcp_servers():
+    servers = []
+    i = 1
+    while True:
+        url = os.getenv(f"MCP_SERVER_{i}_URL")
+        if not url:
+            break
+        token = os.getenv(f"MCP_SERVER_{i}_TOKEN")
+        servers.append({"url": url, "token": token})
+        i += 1
+    return servers
+
+MCP_SERVERS = _parse_mcp_servers()

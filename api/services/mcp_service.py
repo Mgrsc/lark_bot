@@ -8,23 +8,31 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
-from api.config import MCP_STREAM_HTTP_URLS, MCP_CONNECT_TIMEOUT, DEBUG_MODE
+from api.config import MCP_SERVERS, MCP_CONNECT_TIMEOUT, DEBUG_MODE
 import logging
 
 logger = logging.getLogger(__name__)
 
 class MCPHttpClient:
-    def __init__(self, base_url: str, exit_stack: AsyncExitStack):
-        self.base_url = base_url
+    def __init__(self, url: str, token: Optional[str], exit_stack: AsyncExitStack):
+        self.base_url = url
+        self.token = token
         self.session: Optional[ClientSession] = None
         self.exit_stack = exit_stack
         self.tools: List[Tool] = []
 
     async def connect(self):
         try:
+            headers = {}
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
+                logger.info(f"Connecting to MCP server at {self.base_url} with Bearer Token.")
+            else:
+                logger.info(f"Connecting to MCP server at {self.base_url} without authentication.")
+
             async def _connect_and_init():
                 transport = await self.exit_stack.enter_async_context(
-                    streamablehttp_client(self.base_url)
+                    streamablehttp_client(self.base_url, headers=headers)
                 )
                 http_read, http_write, _ = transport
                 self.session = await self.exit_stack.enter_async_context(
@@ -66,13 +74,13 @@ class MCPManager:
         self.tool_map: Dict[str, MCPHttpClient] = {}
 
     async def startup(self):
-        urls = MCP_STREAM_HTTP_URLS
-        if not urls:
+        servers = MCP_SERVERS
+        if not servers:
             if DEBUG_MODE:
-                print("No MCP_STREAM_HTTP_URLS configured, MCP Manager will not connect to any servers.")
+                print("No MCP_SERVERS configured, MCP Manager will not connect to any servers.")
             return
 
-        self.clients = [MCPHttpClient(url, self.exit_stack) for url in urls]
+        self.clients = [MCPHttpClient(server["url"], server.get("token"), self.exit_stack) for server in servers]
         
         connection_tasks = [client.connect() for client in self.clients]
         await asyncio.gather(*connection_tasks)

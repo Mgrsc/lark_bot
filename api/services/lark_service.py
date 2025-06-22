@@ -29,13 +29,16 @@ def send_message(chat_id: str, content: str) -> Optional[str]:
     
     url = f"https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id"
     # Correctly format the content for an interactive message card
+    # The 'content' field must be a JSON string for interactive messages.
+    # We construct the dictionary first, then dump it to a string.
+    card_content = {
+        "config": {"wide_screen_mode": True},
+        "elements": [{"tag": "markdown", "content": content}]
+    }
     payload = {
         "receive_id": chat_id,
         "msg_type": "interactive",
-        "content": json.dumps({
-            "config": {"wide_screen_mode": True},
-            "elements": [{"tag": "markdown", "content": content}]
-        })
+        "content": json.dumps(card_content)
     }
     headers = {"Authorization": f"Bearer {access_token}"}
     
@@ -54,11 +57,12 @@ def patch_message(message_id: str, content: str) -> bool:
     if not access_token: return False
     
     url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}"
+    card_content = {
+        "config": {"wide_screen_mode": True},
+        "elements": [{"tag": "markdown", "content": content}]
+    }
     payload = {
-        "content": json.dumps({
-            "config": {"wide_screen_mode": True},
-            "elements": [{"tag": "markdown", "content": content}]
-        })
+        "content": json.dumps(card_content)
     }
     headers = {"Authorization": f"Bearer {access_token}"}
     
