@@ -4,9 +4,13 @@ import logging
 import re
 import sys
 import time
+import asyncio
+import atexit
+import threading
 from flask import Flask, request, jsonify
 from api import config
 from api.services import lark_service, openai_service, redis_service
+from api.services.mcp_service import mcp_manager
 from api.commands import handler as command_handler
 
 app = Flask(__name__)
@@ -40,6 +44,42 @@ def load_prompts():
 
 load_prompts()
 redis_service.init_redis()
+
+# --- Async Loop Thread ---
+async_loop = asyncio.new_event_loop()
+def run_async_loop():
+    asyncio.set_event_loop(async_loop)
+    async_loop.run_forever()
+
+async_thread = threading.Thread(target=run_async_loop, daemon=True)
+async_thread.start()
+logger.info("Asyncio event loop started in a background thread.")
+# --- End Async Loop Thread ---
+
+# --- MCP Manager & App Shutdown Lifecycle ---
+def run_async_from_sync(coro):
+    future = asyncio.run_coroutine_threadsafe(coro, async_loop)
+    return future.result()
+
+logger.info("Starting MCP Manager...")
+try:
+    run_async_from_sync(mcp_manager.startup())
+    logger.info("MCP Manager started successfully.")
+except Exception as e:
+    logger.error(f"Failed to start MCP Manager: {e}", exc_info=True)
+
+@atexit.register
+def shutdown_app():
+    logger.info("Shutting down application...")
+    try:
+        run_async_from_sync(mcp_manager.shutdown())
+        logger.info("MCP Manager shut down successfully.")
+    except Exception as e:
+        logger.error(f"Failed to shut down MCP Manager cleanly: {e}", exc_info=True)
+    finally:
+        if async_loop.is_running():
+            async_loop.call_soon_threadsafe(async_loop.stop)
+            logger.info("Asyncio event loop stopped.")
 
 @app.route('/api/lark_callback', methods=['POST'])
 def lark_callback():
@@ -140,7 +180,7 @@ def lark_callback():
         messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": text_content}]
         
         logger.info("Requesting AI response for chat.", extra=log_context)
-        ai_response = openai_service.get_ai_response(messages, model)
+        ai_response = run_async_from_sync(openai_service.get_ai_response(messages, model))
 
         # 1. Remove <think> blocks used for chain-of-thought reasoning.
         ai_response = re.sub(r'<think>.*?</think>', '', ai_response, flags=re.DOTALL)
@@ -166,10 +206,28 @@ def lark_callback():
         return jsonify({"msg": "Successfully processed"})
 
     except Exception as e:
-        error_msg = f"🤯 Oops, an error occurred: `{type(e).__name__}`"
-        logger.exception("An error occurred while processing the message:", extra=log_context)
-        lark_service.send_message(chat_id, error_msg)
-        return jsonify({"msg": "Error occurred"}), 500
+        error_type = type(e).__name__
+        error_message = str(e)
+        logger.exception(
+            "An unexpected error occurred while processing the message for chat_id=%s: %s",
+            chat_id, error_message, extra=log_context
+        )
+        
+        user_friendly_error = (
+            f"🤯 **Oops! An error occurred.**\n\n"
+            f"I encountered a `{error_type}` while trying to process your request. "
+            f"Please try again later or contact an administrator if the problem persists."
+        )
+        
+        if config.DEBUG_MODE:
+            user_friendly_error += f"\n\n**Debug Info:**\n```{error_message}```"
+
+        if placeholder_id:
+            lark_service.patch_message(placeholder_id, user_friendly_error)
+        else:
+            lark_service.send_message(chat_id, user_friendly_error)
+            
+        return jsonify({"msg": "Error occurred", "error_type": error_type}), 500
     finally:
         end_time = time.time()
         duration = end_time - start_time

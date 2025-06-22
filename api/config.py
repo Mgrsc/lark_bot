@@ -35,3 +35,6 @@ PROMPTS_DIR = os.path.join(PROJECT_ROOT, 'prompts')
 PROMPTS: dict = {}
 
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == 'true'
+
+MCP_STREAM_HTTP_URLS = [url.strip() for url in os.getenv("MCP_STREAM_HTTP_URLS", "").split(',') if url.strip()]
+MCP_CONNECT_TIMEOUT = int(os.getenv("MCP_CONNECT_TIMEOUT", 10))
