@@ -49,6 +49,27 @@ class MCPHttpClient:
         except Exception as e:
             logger.error(f"Failed to connect to MCP server at {self.base_url}: {e}", exc_info=True)
 
+    def ensure_no_additional_properties(self, schema):
+        """
+        递归为所有 type: object 的 JSON Schema 添加 additionalProperties: false，
+        并递归处理 array、oneOf、anyOf、allOf 等复合结构。
+        """
+        if not isinstance(schema, dict):
+            return schema
+        schema = dict(schema)  # 浅拷贝，避免污染原始对象
+        if schema.get("type") == "object":
+            schema["additionalProperties"] = False
+            if "properties" in schema:
+                for k, v in schema["properties"].items():
+                    schema["properties"][k] = self.ensure_no_additional_properties(v)
+        if schema.get("type") == "array" and "items" in schema:
+            schema["items"] = self.ensure_no_additional_properties(schema["items"])
+        # 递归处理 oneOf/anyOf/allOf
+        for key in ["oneOf", "anyOf", "allOf"]:
+            if key in schema and isinstance(schema[key], list):
+                schema[key] = [self.ensure_no_additional_properties(s) for s in schema[key]]
+        return schema
+
     async def call_tool(self, tool_name: str, args: Dict[str, Any]) -> Any:
         if not self.session:
             raise ConnectionError("Session not initialized. Please connect first.")
@@ -98,12 +119,13 @@ class MCPManager:
         all_tools = []
         for client in self.clients:
             for tool in client.tools:
+                fixed_schema = client.ensure_no_additional_properties(tool.inputSchema)
                 all_tools.append({
                     "type": "function",
                     "function": {
                         "name": tool.name,
                         "description": tool.description,
-                        "parameters": tool.inputSchema,
+                        "parameters": fixed_schema,
                     },
                 })
         return all_tools
