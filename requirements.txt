@@ -19,7 +19,7 @@ jinja2==3.1.6
 jiter==0.10.0
 markdown-it-py==3.0.0
 markupsafe==3.0.2
-mcp==1.9.4
+mcp==1.10.0
 mdurl==0.1.2
 openai==1.88.0
 packaging==25.0
