@@ -11,13 +11,20 @@ LARK_APP_SECRET = os.getenv("LARK_APP_SECRET")
 LARK_VERIFICATION_TOKEN = os.getenv("LARK_VERIFICATION_TOKEN")
 LARK_BOT_OPEN_ID: Optional[str] = None
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4-turbo")
-OPENAI_API_TIMEOUT = int(os.getenv("OPENAI_API_TIMEOUT", 180))
-OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", 0.7))
-OPENAI_TOP_P = float(os.getenv("OPENAI_TOP_P", 1.0))
-OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", 4096))
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4-turbo")
+LLM_API_TIMEOUT = int(os.getenv("LLM_API_TIMEOUT", "180"))
+
+# Optional parameters - only set if explicitly configured
+_temp = os.getenv("LLM_TEMPERATURE")
+LLM_TEMPERATURE = float(_temp) if _temp is not None else None
+
+_top_p = os.getenv("LLM_TOP_P")
+LLM_TOP_P = float(_top_p) if _top_p is not None else None
+
+_max_tokens = os.getenv("LLM_MAX_TOKENS")
+LLM_MAX_TOKENS = int(_max_tokens) if _max_tokens is not None else None
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -36,7 +43,8 @@ PROMPTS: dict = {}
 
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == 'true'
 
-MCP_CONNECT_TIMEOUT = int(os.getenv("MCP_CONNECT_TIMEOUT", 10))
+MCP_CONNECT_TIMEOUT = int(os.getenv("MCP_CONNECT_TIMEOUT", "10"))
+MCP_TOOLS_REFRESH_INTERVAL = int(os.getenv("MCP_TOOLS_REFRESH_INTERVAL", "300"))  # 5 minutes
 
 def _parse_mcp_servers():
     servers = []

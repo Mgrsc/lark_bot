@@ -1,101 +1,217 @@
-# Lark AI Bot
+# 🤖 Lark AI Bot
 
-A powerful, configurable, and ready-to-deploy AI assistant for the Lark (Feishu) platform. This bot integrates with OpenAI's models to provide intelligent responses, supports customizable personalities, and is built with a modern, container-based architecture for easy deployment and scaling.
+An AI assistant for Lark (Feishu) that supports customizable personalities, conversation context, and tool integration via Model Context Protocol (MCP).
 
 ## ✨ Features
 
-- **Intelligent Conversation**: Powered by OpenAI's language models to understand and respond to user queries.
-- **Customizable Personalities (Roles)**: Easily define multiple bot personalities (e.g., "expert," "doctor") by simply adding text files to the `prompts/` directory.
-- **Rich Text Responses**: The bot is instructed to use Lark's formatting options (bold, italics, colors, links) to provide clear and engaging answers.
-- **Conversation Memory**: Utilizes Redis/Valkey to maintain conversation context, allowing for follow-up questions.
-- **Smart Response Logic**:
-    - In **group chats**, the bot will only respond when explicitly mentioned (`@`).
-    - In **private (P2P) chats**, the bot will respond to all messages.
-- **Debug Mode**: An optional debug mode that provides verbose logging of incoming requests and AI responses for easy troubleshooting.
-- **Containerized Deployment**: Comes with a `Dockerfile` and `docker-compose.yml` for easy local setup and production deployment.
-- **Automated CI/CD**: Includes a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) to automatically build and publish the Docker image to container registries.
+- 🎯 **LLM Integration** - Compatible with OpenAI and other OpenAI-compatible APIs
+- 🔧 **MCP Support** - Connect external tools through Model Context Protocol
+- 🎭 **Customizable Roles** - Define bot personalities via text files
+- 💾 **Conversation Memory** - Redis-based context retention
+- 🔄 **Smart Tool Refresh** - Automatic MCP tool list updates
+- 📱 **Smart Response** - Responds to @mentions in groups, all messages in DM
 
-## 🚀 Getting Started (Local Development)
-
-You can get the entire application stack running locally with a single command using Docker Compose.
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- [Docker](https://www.docker.com/get-started)
-- [Docker Compose](https://docs.docker.com/compose/install/)
+- Lark (Feishu) application credentials
+- Redis/Upstash instance
+- LLM API key (OpenAI or compatible service)
 
-### 1. Configure Environment Variables
-
-First, create a `.env` file by copying the example file:
+### Environment Setup
 
 ```bash
 cp .env.example .env
+# Edit .env with your credentials
 ```
 
-Now, open the `.env` file and fill in the required values.
+**Required Variables:**
+```bash
+# Lark App
+LARK_APP_ID=your_app_id
+LARK_APP_SECRET=your_app_secret
+LARK_VERIFICATION_TOKEN=your_token
 
-| Variable                  | Description                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `LARK_APP_ID`             | **Required.** Your Lark application's App ID.                                                           |
-| `LARK_APP_SECRET`         | **Required.** Your Lark application's App Secret.                                                       |
-| `LARK_VERIFICATION_TOKEN` | **Required.** The verification token from your Lark app's event subscription settings.                  |
-| `OPENAI_API_KEY`          | **Required.** Your API key for the OpenAI service.                                                      |
-| `OPENAI_BASE_URL`         | The base URL for the OpenAI API. Defaults to the official OpenAI URL if not set.                        |
-| `REDIS_URL`               | The connection URL for your Redis/Valkey instance. **Note:** This is ignored when using `docker-compose`. |
-| `DEFAULT_ROLE`            | The default role to use if none is set. Defaults to `default`.                                          |
-| `DEBUG_MODE`              | Set to `true` to enable verbose logging for debugging. Defaults to `false`.                             |
+# LLM Service
+LLM_API_KEY=your_api_key
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4-turbo
 
-### 2. Run with Docker Compose
+# Redis
+REDIS_URL=redis://localhost:6379/0
+```
 
-With your `.env` file configured, start the application and the Valkey database:
+**Optional Variables:**
+```bash
+# Model Parameters (not set by default, only sent if explicitly configured)
+# Uncomment and set these ONLY if you need to customize LLM behavior
+# If not set, these parameters won't be sent to the LLM API
+# LLM_TEMPERATURE=0.7
+# LLM_TOP_P=1.0
+# LLM_MAX_TOKENS=4096
+
+# MCP Servers (optional)
+# MCP_SERVER_1_URL=http://localhost:8000/mcp
+# MCP_SERVER_1_TOKEN=optional_token
+```
+
+See [.env.example](.env.example) for full documentation.
+
+---
+
+## 📦 Deployment
+
+### Option 1: Local Development
+
+**Requirements:** Python 3.11+, Redis
 
 ```bash
+# Install dependencies
+uv sync
+
+# Run the application
+uv run flask run
+```
+
+The app will be available at `http://localhost:5000`.
+
+### Option 2: Docker
+
+**Requirements:** Docker, Docker Compose
+
+```bash
+# Build and run
 docker-compose up --build
 ```
 
-The application will be available at `http://localhost:5001`.
+The app will be available at `http://localhost:5001`.
 
-## 🎨 Customizing Roles
+**Production deployment:**
+```bash
+docker build -t lark-bot .
+docker run -d \
+  --env-file .env \
+  -p 8000:8000 \
+  lark-bot
+```
 
-You can easily add new personalities or "roles" to the bot.
+### Option 3: Vercel (Serverless)
 
-1.  Create a new `.txt` file in the `prompts/` directory (e.g., `prompts/comedian.txt`).
-2.  Write the system prompt for the new role inside this file. This text will define the bot's personality and behavior.
-3.  In a chat with the bot, you can now switch to this new role by typing `/role comedian`.
+**Requirements:** Vercel account
 
-## 🚢 Deployment & CI/CD
+```bash
+# Install Vercel CLI
+npm i -g vercel
 
-This project is configured for automated container builds and publishing via GitHub Actions.
+# Deploy
+vercel deploy
+```
 
-### Dockerfile
+**Configure environment variables** in Vercel dashboard (`Settings > Environment Variables`).
 
-The `Dockerfile` uses a modern, multi-stage build process with `uv` to create a lightweight, production-ready image. It runs the application using the `gunicorn` WSGI server.
+**Notes:**
+- Vercel automatically handles cold starts and scaling
+- MCP connections are established on first request
+- Redis must be accessible from Vercel (use Upstash or similar)
 
-### GitHub Actions Workflow
+---
 
-The workflow is defined in `.github/workflows/docker-publish.yml` and performs the following actions on every push to the `main` branch:
+## 🎨 Customization
 
-1.  **Builds** a new Docker image.
-2.  **Tags** the image with the commit SHA and `latest`.
-3.  **Pushes** the image to container registries based on your repository configuration.
+### Adding Personalities
 
-To enable pushing, you need to configure secrets and variables in your GitHub repository's settings (`Settings > Secrets and variables > Actions`):
+Create a new file in `prompts/` directory:
 
-- **To push to an external registry (e.g., Docker Hub):**
-    - `DOCKER_REGISTRY`: (Secret) The URL of the registry (e.g., `docker.io`).
-    - `DOCKER_USERNAME`: (Secret) Your username for the registry.
-    - `DOCKER_PASSWORD`: (Secret) Your password or access token for the registry.
+```bash
+# prompts/expert.txt
+You are a technical expert who provides detailed, accurate answers...
+```
 
-- **To push to GitHub Container Registry (GHCR):**
-    - `PUSH_TO_GHCR`: (Variable) Set the value to `true`.
+Switch roles in chat:
+```
+/role expert
+```
 
-If the required secrets/variables are not set, the corresponding push step will be skipped.
+### MCP Tool Integration
 
-## 🤖 Available Commands
+Configure MCP servers in `.env`:
 
-| Command                 | Description                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `/help`                 | Displays the help message, including available commands and the current role.                           |
-| `/role [role_name]`     | Switches the bot's personality. If `[role_name]` is omitted, it displays the currently active role.      |
-| `/model [model_name]`   | Switches the OpenAI model. If `[model_name]` is omitted, it displays the currently active model.        |
-| `/clear`                | Clears the conversation history for the current chat, giving you a fresh start.                         |
+```bash
+MCP_SERVER_1_URL=http://your-mcp-server.com/mcp
+MCP_SERVER_1_TOKEN=optional_bearer_token
+
+MCP_SERVER_2_URL=http://another-server.com/mcp
+# Add more as needed (MCP_SERVER_3_URL, etc.)
+```
+
+The bot will automatically discover and use available tools.
+
+---
+
+## 🤖 Commands
+
+| Command | Description |
+|---------|-------------|
+| `/help` | Show available commands |
+| `/clear` | Clear conversation history |
+| `/role [name]` | Switch bot personality |
+| `/model [name]` | Switch LLM model |
+| `/refresh` | Refresh MCP tool list |
+
+---
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+lark_bot/
+├── api/
+│   ├── app.py              # Flask application
+│   ├── config.py           # Configuration
+│   ├── commands/           # Command handlers
+│   └── services/
+│       ├── llm_client.py   # LLM API client
+│       ├── mcp_service.py  # MCP integration
+│       ├── lark_service.py # Lark API
+│       └── redis_service.py# Redis operations
+├── prompts/                # Bot personalities
+├── .env.example           # Environment template
+└── vercel.json            # Vercel configuration
+```
+
+### Running Tests
+
+```bash
+# Syntax check
+.venv/bin/python -m py_compile api/**/*.py
+
+# Manual testing
+.venv/bin/python -c "from api.app import app; print('✓ App loaded')"
+```
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Please feel free to submit pull requests or open issues.
+
+---
+
+## 💡 Tips
+
+- **Low traffic?** Default 5-minute tool refresh is perfect
+- **High traffic?** Increase `MCP_TOOLS_REFRESH_INTERVAL` to reduce overhead
+- **Tools changing frequently?** Use `/refresh` command or decrease interval
+- **Debugging?** Set `DEBUG_MODE=true` for verbose logs
+
+---
+
+Made with ❤️ for the Lark community

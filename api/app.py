@@ -45,41 +45,44 @@ def load_prompts():
 load_prompts()
 redis_service.init_redis()
 
-# --- Async Loop Thread ---
-async_loop = asyncio.new_event_loop()
-def run_async_loop():
-    asyncio.set_event_loop(async_loop)
-    async_loop.run_forever()
+# --- Vercel-Optimized Event Loop Management ---
+_event_loop = None
+_loop_thread = None
+_init_lock = threading.Lock()
 
-async_thread = threading.Thread(target=run_async_loop, daemon=True)
-async_thread.start()
-logger.info("Asyncio event loop started in a background thread.")
-# --- End Async Loop Thread ---
+def get_or_create_event_loop():
+    """Get or create a persistent event loop for MCP operations."""
+    global _event_loop, _loop_thread
+    
+    with _init_lock:
+        # Check if loop exists and is still running
+        if _event_loop is None or _event_loop.is_closed():
+            logger.info("Creating new event loop for MCP operations...")
+            _event_loop = asyncio.new_event_loop()
+            
+            def run_loop():
+                asyncio.set_event_loop(_event_loop)
+                _event_loop.run_forever()
+            
+            _loop_thread = threading.Thread(target=run_loop, daemon=True)
+            _loop_thread.start()
+            logger.info("Event loop thread started.")
+            
+            # Initialize MCP Manager in the new loop
+            try:
+                future = asyncio.run_coroutine_threadsafe(mcp_manager.startup(), _event_loop)
+                future.result(timeout=30)  # Wait for initialization
+                logger.info("MCP Manager initialized successfully.")
+            except Exception as e:
+                logger.error(f"Failed to initialize MCP Manager: {e}", exc_info=True)
+        
+        return _event_loop
 
-# --- MCP Manager & App Shutdown Lifecycle ---
 def run_async_from_sync(coro):
-    future = asyncio.run_coroutine_threadsafe(coro, async_loop)
+    """Run async coroutine from sync context using persistent event loop."""
+    loop = get_or_create_event_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
     return future.result()
-
-logger.info("Starting MCP Manager...")
-try:
-    run_async_from_sync(mcp_manager.startup())
-    logger.info("MCP Manager started successfully.")
-except Exception as e:
-    logger.error(f"Failed to start MCP Manager: {e}", exc_info=True)
-
-@atexit.register
-def shutdown_app():
-    logger.info("Shutting down application...")
-    try:
-        run_async_from_sync(mcp_manager.shutdown())
-        logger.info("MCP Manager shut down successfully.")
-    except Exception as e:
-        logger.error(f"Failed to shut down MCP Manager cleanly: {e}", exc_info=True)
-    finally:
-        if async_loop.is_running():
-            async_loop.call_soon_threadsafe(async_loop.stop)
-            logger.info("Asyncio event loop stopped.")
 
 @app.route('/api/lark_callback', methods=['POST'])
 def lark_callback():
@@ -172,7 +175,7 @@ def lark_callback():
 
     try:
         settings = redis_service.get_chat_settings(chat_id)
-        model = settings.get('model') or config.OPENAI_MODEL
+        model = settings.get('model') or config.LLM_MODEL
         role = settings.get('role') or config.DEFAULT_ROLE
         system_prompt = config.PROMPTS.get(role, config.PROMPTS['default'])
         

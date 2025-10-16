@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import traceback
 from typing import Optional, List, Dict, Any
 from contextlib import AsyncExitStack
@@ -8,7 +9,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import Tool
 
-from api.config import MCP_SERVERS, MCP_CONNECT_TIMEOUT, DEBUG_MODE
+from api.config import MCP_SERVERS, MCP_CONNECT_TIMEOUT, MCP_TOOLS_REFRESH_INTERVAL, DEBUG_MODE
 import logging
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,25 @@ class MCPHttpClient:
                 schema[key] = [self.ensure_no_additional_properties(s) for s in schema[key]]
         return schema
 
+    async def refresh_tools(self):
+        """Refresh the tool list from the MCP server."""
+        if not self.session:
+            logger.warning(f"Cannot refresh tools for {self.base_url}: session not initialized")
+            return
+        
+        try:
+            response = await self.session.list_tools()
+            old_count = len(self.tools)
+            self.tools = response.tools
+            new_count = len(self.tools)
+            
+            if old_count != new_count:
+                logger.info(f"Tool list updated for {self.base_url}: {old_count} → {new_count} tools")
+            else:
+                logger.debug(f"Tool list refreshed for {self.base_url}: {new_count} tools")
+        except Exception as e:
+            logger.error(f"Failed to refresh tools from {self.base_url}: {e}", exc_info=True)
+
     async def call_tool(self, tool_name: str, args: Dict[str, Any]) -> Any:
         if not self.session:
             raise ConnectionError("Session not initialized. Please connect first.")
@@ -93,6 +113,8 @@ class MCPManager:
         self.clients: List[MCPHttpClient] = []
         self.exit_stack = AsyncExitStack()
         self.tool_map: Dict[str, MCPHttpClient] = {}
+        self.last_refresh_time: Optional[float] = None
+        self.refresh_interval: int = MCP_TOOLS_REFRESH_INTERVAL
 
     async def startup(self):
         servers = MCP_SERVERS
@@ -106,11 +128,51 @@ class MCPManager:
         connection_tasks = [client.connect() for client in self.clients]
         await asyncio.gather(*connection_tasks)
 
+        self._rebuild_tool_map()
+        self.last_refresh_time = time.time()
+
+    def _rebuild_tool_map(self):
+        """Rebuild the tool name to client mapping."""
+        self.tool_map.clear()
         for client in self.clients:
             for tool in client.tools:
                 if tool.name in self.tool_map:
-                    print(f"Warning: Duplicate tool name '{tool.name}' found. The one from {client.base_url} will be used.")
+                    logger.warning(f"Duplicate tool name '{tool.name}' found. The one from {client.base_url} will be used.")
                 self.tool_map[tool.name] = client
+    
+    async def refresh_all_tools(self):
+        """Refresh tool lists from all MCP servers."""
+        if not self.clients:
+            return
+        
+        start_time = time.time()
+        refresh_tasks = [client.refresh_tools() for client in self.clients]
+        await asyncio.gather(*refresh_tasks, return_exceptions=True)
+        
+        # Rebuild tool mapping after refresh
+        self._rebuild_tool_map()
+        self.last_refresh_time = time.time()
+        
+        duration = time.time() - start_time
+        logger.info(f"Refreshed all MCP tools in {duration:.2f}s, total tools: {len(self.tool_map)}")
+    
+    async def ensure_tools_fresh(self):
+        """Ensure tool list is fresh, refresh if needed."""
+        if not self.clients:
+            return
+        
+        now = time.time()
+        
+        # First call or refresh interval exceeded
+        if (self.last_refresh_time is None or 
+            now - self.last_refresh_time > self.refresh_interval):
+            
+            age = 0 if self.last_refresh_time is None else now - self.last_refresh_time
+            logger.info(f"Tool list needs refresh (age: {age:.0f}s), refreshing...")
+            await self.refresh_all_tools()
+        else:
+            age = now - self.last_refresh_time
+            logger.debug(f"Tool list is fresh (age: {age:.0f}s, interval: {self.refresh_interval}s)")
 
     async def shutdown(self):
         await self.exit_stack.aclose()
